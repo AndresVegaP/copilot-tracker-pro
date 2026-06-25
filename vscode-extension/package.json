@@ -1,0 +1,79 @@
+{
+  "name": "ia-credits",
+  "displayName": "IA Credits — Copilot (Chile)",
+  "description": "Reparte tu cupo mensual de AI Credits de GitHub Copilot solo entre días hábiles (L–V) descontando feriados de Chile, y compara tu consumo real con el tope que deberías llevar a la fecha.",
+  "version": "0.1.0",
+  "publisher": "local",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      { "command": "iaCredits.openPanel", "title": "IA Credits: Abrir panel" },
+      { "command": "iaCredits.refresh", "title": "IA Credits: Actualizar ahora" },
+      { "command": "iaCredits.connect", "title": "IA Credits: Conectar con GitHub (sesión de VS Code)" },
+      { "command": "iaCredits.setToken", "title": "IA Credits: Configurar token de GitHub (PAT)" },
+      { "command": "iaCredits.clearToken", "title": "IA Credits: Borrar token guardado" }
+    ],
+    "configuration": {
+      "title": "IA Credits",
+      "properties": {
+        "iaCredits.monthlyCredits": {
+          "type": "number",
+          "default": 1500,
+          "minimum": 0,
+          "markdownDescription": "AI Credits incluidos por mes según tu plan (Copilot **Pro** = 1500, **Pro+** = 7000). Se usa como respaldo cuando la API no entrega tu cupo total."
+        },
+        "iaCredits.githubUsername": {
+          "type": "string",
+          "default": "",
+          "description": "Tu usuario de GitHub (opcional; se detecta solo al configurar un token o conectar la sesión)."
+        },
+        "iaCredits.refreshIntervalSeconds": {
+          "type": "number",
+          "default": 300,
+          "minimum": 30,
+          "description": "Cada cuántos segundos refrescar el consumo real (la API no es tiempo real estricto)."
+        },
+        "iaCredits.autoFetch": {
+          "type": "boolean",
+          "default": true,
+          "description": "Intentar leer tu consumo real de Copilot (sesión de GitHub de VS Code, o token PAT de respaldo)."
+        },
+        "iaCredits.holidays": {
+          "type": "array",
+          "markdownDescription": "Feriados que reducen tu cupo. Solo cuentan los que caen en día hábil (L–V).",
+          "items": {
+            "type": "object",
+            "properties": {
+              "date": { "type": "string", "description": "Fecha YYYY-MM-DD" },
+              "name": { "type": "string", "description": "Nombre del feriado" }
+            }
+          },
+          "default": [
+            { "date": "2026-01-01", "name": "Año Nuevo" },
+            { "date": "2026-04-03", "name": "Viernes Santo" },
+            { "date": "2026-04-04", "name": "Sábado Santo" },
+            { "date": "2026-05-01", "name": "Día del Trabajo" },
+            { "date": "2026-05-21", "name": "Glorias Navales" },
+            { "date": "2026-06-21", "name": "Día de los Pueblos Indígenas" },
+            { "date": "2026-06-29", "name": "San Pedro y San Pablo" },
+            { "date": "2026-07-16", "name": "Virgen del Carmen" },
+            { "date": "2026-08-15", "name": "Asunción de la Virgen" },
+            { "date": "2026-09-18", "name": "Independencia" },
+            { "date": "2026-09-19", "name": "Glorias del Ejército" },
+            { "date": "2026-10-12", "name": "Encuentro de Dos Mundos" },
+            { "date": "2026-10-31", "name": "Iglesias Evangélicas" },
+            { "date": "2026-11-01", "name": "Día de Todos los Santos" },
+            { "date": "2026-12-08", "name": "Inmaculada Concepción" },
+            { "date": "2026-12-25", "name": "Navidad" }
+          ]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="es-CL">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>IA Credits · Planificador de cupos diarios</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#0d0c0f;
+    --bg-2:#141218;
+    --panel:#1a181f;
+    --panel-2:#211e27;
+    --line:#2c2833;
+    --line-soft:#241f2b;
+    --ink:#efe9e0;
+    --ink-dim:#b6afa4;
+    --muted:#827a8c;
+    --muted-2:#5d566a;
+    --gold:#e9b15a;
+    --gold-soft:#f0c789;
+    --gold-deep:#b07d2e;
+    --green:#7fc6a0;
+    --green-deep:#2f5d46;
+    --rose:#d97a6e;
+    --rose-deep:#5a2f2c;
+    --weekend:#6b6478;
+    --radius:16px;
+    --shadow:0 24px 60px -28px rgba(0,0,0,.85);
+    --mono:'IBM Plex Mono',ui-monospace,monospace;
+    --sans:'IBM Plex Sans',system-ui,sans-serif;
+    --display:'Fraunces',Georgia,serif;
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0}
+
+  html{-webkit-text-size-adjust:100%}
+
+  body{
+    font-family:var(--sans);
+    color:var(--ink);
+    background:
+      radial-gradient(1100px 700px at 82% -8%, rgba(233,177,90,.13), transparent 55%),
+      radial-gradient(900px 700px at -5% 100%, rgba(127,198,160,.07), transparent 55%),
+      var(--bg);
+    min-height:100vh;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  /* subtle film grain */
+  body::before{
+    content:"";position:fixed;inset:0;pointer-events:none;z-index:9999;opacity:.04;mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  .wrap{max-width:1180px;margin:0 auto;padding:48px 28px 80px}
+
+  /* ---------- Header ---------- */
+  header.masthead{
+    display:flex;justify-content:space-between;align-items:flex-end;gap:24px;
+    padding-bottom:26px;border-bottom:1px solid var(--line);flex-wrap:wrap;
+  }
+  .brand-eyebrow{
+    font-family:var(--mono);font-size:11px;letter-spacing:.34em;text-transform:uppercase;
+    color:var(--gold);margin-bottom:14px;display:flex;align-items:center;gap:10px;
+  }
+  .brand-eyebrow::before{content:"";width:26px;height:1px;background:var(--gold)}
+  h1.title{
+    font-family:var(--display);font-weight:600;font-size:clamp(40px,7vw,72px);
+    line-height:.95;letter-spacing:-.02em;
+  }
+  h1.title em{font-style:italic;color:var(--gold-soft);font-weight:500}
+  .subtitle{color:var(--muted);max-width:30ch;font-size:14px;margin-top:14px}
+  .flag{
+    font-family:var(--mono);font-size:11px;color:var(--ink-dim);text-align:right;
+    border:1px solid var(--line);border-radius:10px;padding:10px 14px;background:rgba(255,255,255,.015);
+    white-space:nowrap;
+  }
+  .flag b{color:var(--gold-soft);font-weight:600}
+
+  /* ---------- Controls ---------- */
+  .controls{
+    display:grid;grid-template-columns:auto 1fr;gap:18px;align-items:stretch;
+    margin-top:34px;
+  }
+  @media(max-width:720px){.controls{grid-template-columns:1fr}}
+
+  .monthnav{
+    display:flex;align-items:center;gap:6px;background:var(--panel);
+    border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px;
+  }
+  .monthnav button{
+    width:40px;height:40px;border-radius:10px;border:1px solid var(--line);
+    background:var(--panel-2);color:var(--ink);font-size:18px;cursor:pointer;
+    display:grid;place-items:center;transition:.18s;
+  }
+  .monthnav button:hover{background:var(--gold);color:#1a140a;border-color:var(--gold)}
+  .monthnav .mlabel{
+    min-width:180px;text-align:center;
+  }
+  .monthnav .mlabel .m{font-family:var(--display);font-size:22px;font-weight:600;text-transform:capitalize;line-height:1}
+  .monthnav .mlabel .y{font-family:var(--mono);font-size:12px;color:var(--muted);letter-spacing:.2em}
+
+  .credit-input{
+    display:flex;align-items:center;gap:16px;background:var(--panel);
+    border:1px solid var(--line);border-radius:var(--radius);padding:14px 20px;flex-wrap:wrap;
+  }
+  .credit-input label{
+    font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);
+  }
+  .credit-input .field{display:flex;align-items:center;gap:10px;flex:1;min-width:180px}
+  .credit-input input{
+    flex:1;min-width:120px;background:var(--bg-2);border:1px solid var(--line);border-radius:10px;
+    color:var(--gold-soft);font-family:var(--mono);font-size:26px;font-weight:600;
+    padding:8px 14px;outline:none;transition:.18s;letter-spacing:.01em;
+  }
+  .credit-input input:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(233,177,90,.15)}
+  .credit-input .unit{font-family:var(--mono);font-size:12px;color:var(--muted)}
+
+  /* ---------- Stat cards ---------- */
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:14px}
+  @media(max-width:880px){.stats{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:480px){.stats{grid-template-columns:1fr}}
+  .card{
+    position:relative;background:var(--panel);border:1px solid var(--line);
+    border-radius:var(--radius);padding:18px 20px 20px;overflow:hidden;
+  }
+  .card::after{content:"";position:absolute;inset:0 0 auto 0;height:2px;background:linear-gradient(90deg,var(--gold),transparent)}
+  .card.green::after{background:linear-gradient(90deg,var(--green),transparent)}
+  .card.rose::after{background:linear-gradient(90deg,var(--rose),transparent)}
+  .card .k{font-family:var(--mono);font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted)}
+  .card .v{font-family:var(--display);font-size:34px;font-weight:600;line-height:1.05;margin-top:10px;letter-spacing:-.01em}
+  .card .v small{font-family:var(--mono);font-size:13px;color:var(--gold-soft);font-weight:500}
+  .card .sub{font-family:var(--mono);font-size:11.5px;color:var(--ink-dim);margin-top:8px}
+  .card .sub .hot{color:var(--gold-soft)}
+  .pace{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;margin-top:8px;
+    padding:3px 9px;border-radius:999px;border:1px solid var(--line)}
+  .pace.ok{color:var(--green);border-color:var(--green-deep);background:rgba(127,198,160,.07)}
+  .pace.over{color:var(--rose);border-color:var(--rose-deep);background:rgba(217,122,110,.07)}
+  .pace .dot{width:7px;height:7px;border-radius:50%;background:currentColor}
+
+  /* ---------- Calendar ---------- */
+  .section-head{display:flex;align-items:baseline;justify-content:space-between;margin:42px 0 16px;gap:16px;flex-wrap:wrap}
+  .section-head h2{font-family:var(--display);font-size:24px;font-weight:600}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .legend span{display:inline-flex;align-items:center;gap:7px}
+  .legend i{width:11px;height:11px;border-radius:3px;display:inline-block}
+  .lg-work{background:rgba(233,177,90,.22);border:1px solid var(--gold-deep)}
+  .lg-week{background:rgba(107,100,120,.18);border:1px solid var(--muted-2)}
+  .lg-holi{background:rgba(217,122,110,.16);border:1px solid var(--rose-deep)}
+  .lg-today{background:transparent;border:1.5px solid var(--gold)}
+
+  .cal-scroll{overflow-x:auto;margin:0 -4px;padding:0 4px}
+  .cal{min-width:680px}
+  .dow{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin-bottom:8px}
+  .dow div{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);text-align:left;padding-left:4px}
+  .dow div.we{color:var(--weekend)}
+  .grid{display:grid;grid-template-columns:repeat(7,1fr);gap:8px}
+
+  .cell{
+    position:relative;min-height:104px;border-radius:13px;border:1px solid var(--line-soft);
+    background:var(--panel);padding:10px 11px 9px;display:flex;flex-direction:column;
+    transition:.16s;
+  }
+  .cell.blank{background:transparent;border:none}
+  .cell .dnum{font-family:var(--mono);font-size:14px;font-weight:600;color:var(--ink-dim);display:flex;justify-content:space-between;align-items:center}
+  .cell .dnum .dl{font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+
+  /* working day */
+  .cell.work{background:linear-gradient(165deg,rgba(233,177,90,.10),rgba(233,177,90,.02));border-color:rgba(176,125,46,.45)}
+  .cell.work .big{font-family:var(--display);font-size:26px;font-weight:600;color:var(--gold-soft);line-height:1;margin-top:auto}
+  .cell.work .cred{font-family:var(--mono);font-size:11px;color:var(--ink-dim);margin-top:3px}
+  .cell.work .inc{font-family:var(--mono);font-size:9.5px;color:var(--muted);margin-top:5px}
+  .cell .bar{height:3px;border-radius:3px;background:var(--line);margin-top:7px;overflow:hidden}
+  .cell .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--gold-deep),var(--gold-soft));border-radius:3px}
+
+  /* weekend / holiday */
+  .cell.weekend{background:repeating-linear-gradient(135deg,rgba(255,255,255,.012) 0 7px,transparent 7px 14px),var(--bg-2);border-color:var(--line-soft)}
+  .cell.weekend .dnum{color:var(--weekend)}
+  .cell.holiday{background:linear-gradient(165deg,rgba(217,122,110,.12),rgba(217,122,110,.02));border-color:rgba(90,47,44,.8)}
+  .cell.holiday .dnum{color:var(--rose)}
+  .cell .tag{font-family:var(--mono);font-size:9.5px;color:var(--muted);margin-top:auto;line-height:1.25}
+  .cell.holiday .tag{color:var(--rose)}
+
+  /* today ring */
+  .cell.today{box-shadow:0 0 0 1.5px var(--gold),0 0 0 5px rgba(233,177,90,.12)}
+  .cell .todaypin{position:absolute;top:-8px;right:10px;font-family:var(--mono);font-size:9px;letter-spacing:.14em;
+    background:var(--gold);color:#1a140a;padding:2px 7px;border-radius:6px;font-weight:600}
+
+  /* usage input on working days */
+  .usebox{margin-top:7px;display:flex;align-items:center;gap:5px}
+  .usebox input{
+    width:100%;background:rgba(0,0,0,.28);border:1px solid var(--line);border-radius:7px;
+    color:var(--ink);font-family:var(--mono);font-size:11px;padding:4px 6px;outline:none;
+  }
+  .usebox input::placeholder{color:var(--muted-2)}
+  .usebox input:focus{border-color:var(--gold)}
+  .cell.over .usebox input{border-color:var(--rose);color:var(--rose)}
+  .cell.under .usebox input{border-color:var(--green-deep)}
+
+  /* ---------- Holidays panel ---------- */
+  details.holidays{margin-top:40px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+  details.holidays>summary{
+    list-style:none;cursor:pointer;padding:18px 22px;display:flex;align-items:center;justify-content:space-between;
+    font-family:var(--display);font-size:20px;font-weight:600;
+  }
+  details.holidays>summary::-webkit-details-marker{display:none}
+  details.holidays>summary .chev{font-family:var(--mono);font-size:12px;color:var(--gold);transition:.2s}
+  details.holidays[open]>summary .chev{transform:rotate(90deg)}
+  .holi-body{padding:0 22px 22px;border-top:1px solid var(--line)}
+  .holi-note{font-size:12.5px;color:var(--muted);margin:16px 0;max-width:64ch}
+  .holi-list{display:flex;flex-direction:column;gap:6px;margin-bottom:18px}
+  .holi-row{
+    display:grid;grid-template-columns:120px 1fr auto auto;gap:12px;align-items:center;
+    padding:9px 12px;background:var(--bg-2);border:1px solid var(--line-soft);border-radius:10px;font-size:13px;
+  }
+  .holi-row .hd{font-family:var(--mono);color:var(--gold-soft);font-size:12.5px}
+  .holi-row .hw{font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .holi-row.weekendish{opacity:.5}
+  .holi-row button{background:none;border:none;color:var(--rose);cursor:pointer;font-family:var(--mono);font-size:11px;padding:4px 6px;border-radius:6px}
+  .holi-row button:hover{background:rgba(217,122,110,.12)}
+  .holi-add{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .holi-add input{background:var(--bg-2);border:1px solid var(--line);border-radius:9px;color:var(--ink);
+    font-family:var(--sans);font-size:13px;padding:9px 12px;outline:none}
+  .holi-add input[type=date]{font-family:var(--mono);color-scheme:dark}
+  .holi-add input:focus{border-color:var(--gold)}
+  .holi-add input.name{flex:1;min-width:160px}
+  .btn{background:var(--gold);color:#1a140a;border:none;border-radius:9px;font-family:var(--mono);font-size:12px;
+    font-weight:600;padding:10px 16px;cursor:pointer;letter-spacing:.04em;transition:.16s}
+  .btn:hover{background:var(--gold-soft)}
+  .btn.ghost{background:transparent;color:var(--ink-dim);border:1px solid var(--line)}
+  .btn.ghost:hover{background:var(--panel-2);color:var(--ink)}
+
+  footer{margin-top:48px;padding-top:22px;border-top:1px solid var(--line);
+    font-family:var(--mono);font-size:11px;color:var(--muted-2);display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+  footer a{color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div>
+      <div class="brand-eyebrow">Copilot · cupo laboral</div>
+      <h1 class="title">IA <em>Credits</em></h1>
+      <p class="subtitle">Reparte tus créditos mensuales solo entre días hábiles (L–V), descontando feriados de Chile.</p>
+    </div>
+    <div class="flag" id="flag">—</div>
+  </header>
+
+  <section class="controls">
+    <div class="monthnav">
+      <button id="prev" aria-label="Mes anterior">‹</button>
+      <div class="mlabel">
+        <div class="m" id="mname">—</div>
+        <div class="y" id="myear">—</div>
+      </div>
+      <button id="next" aria-label="Mes siguiente">›</button>
+    </div>
+    <div class="credit-input">
+      <label for="credits">Créditos del mes</label>
+      <div class="field">
+        <input id="credits" type="number" min="0" step="100" inputmode="numeric" />
+        <span class="unit">IA&nbsp;credits</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="stats" id="stats"></section>
+
+  <div class="section-head">
+    <h2>Calendario del cupo</h2>
+    <div class="legend">
+      <span><i class="lg-work"></i> Día hábil</span>
+      <span><i class="lg-week"></i> Fin de semana</span>
+      <span><i class="lg-holi"></i> Feriado</span>
+      <span><i class="lg-today"></i> Hoy</span>
+    </div>
+  </div>
+
+  <div class="cal-scroll">
+    <div class="cal">
+      <div class="dow">
+        <div>Lun</div><div>Mar</div><div>Mié</div><div>Jue</div><div>Vie</div><div class="we">Sáb</div><div class="we">Dom</div>
+      </div>
+      <div class="grid" id="grid"></div>
+    </div>
+  </div>
+
+  <details class="holidays">
+    <summary>Feriados de Chile <span class="chev">▸</span></summary>
+    <div class="holi-body">
+      <p class="holi-note">
+        Solo los feriados que caen en día hábil reducen tu cupo. La lista viene precargada con los feriados
+        irrenunciables y legales de Chile 2026 — edítala libremente si necesitas otro año o un feriado regional.
+      </p>
+      <div class="holi-list" id="holiList"></div>
+      <div class="holi-add">
+        <input type="date" id="hDate" />
+        <input type="text" class="name" id="hName" placeholder="Nombre del feriado" />
+        <button class="btn" id="hAdd">Agregar</button>
+        <button class="btn ghost" id="hReset">Restaurar Chile 2026</button>
+      </div>
+    </div>
+  </details>
+
+  <footer>
+    <span>Datos guardados localmente en este navegador · sin servidor</span>
+    <span id="version">IA Credits · v1</span>
+  </footer>
+
+</div>
+
+<script>
+"use strict";
+const STORAGE_KEY = 'ia-credits-v1';
+const DEFAULT_CREDITS = 40000;
+
+const DEFAULT_HOLIDAYS_2026 = [
+  {date:'2026-01-01', name:'Año Nuevo'},
+  {date:'2026-04-03', name:'Viernes Santo'},
+  {date:'2026-04-04', name:'Sábado Santo'},
+  {date:'2026-05-01', name:'Día del Trabajo'},
+  {date:'2026-05-21', name:'Glorias Navales'},
+  {date:'2026-06-21', name:'Día de los Pueblos Indígenas'},
+  {date:'2026-06-29', name:'San Pedro y San Pablo'},
+  {date:'2026-07-16', name:'Virgen del Carmen'},
+  {date:'2026-08-15', name:'Asunción de la Virgen'},
+  {date:'2026-09-18', name:'Independencia'},
+  {date:'2026-09-19', name:'Glorias del Ejército'},
+  {date:'2026-10-12', name:'Encuentro de Dos Mundos'},
+  {date:'2026-10-31', name:'Iglesias Evangélicas'},
+  {date:'2026-11-01', name:'Día de Todos los Santos'},
+  {date:'2026-12-08', name:'Inmaculada Concepción'},
+  {date:'2026-12-25', name:'Navidad'}
+];
+
+const MONTHS = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+const DOW_SHORT = ['dom','lun','mar','mié','jue','vie','sáb'];
+
+/* ---------- state ---------- */
+function defaultState(){
+  const t = new Date();
+  return { year:t.getFullYear(), month:t.getMonth(), monthCredits:{}, usage:{}, holidays:DEFAULT_HOLIDAYS_2026.slice() };
+}
+function load(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(raw){
+      const s = JSON.parse(raw);
+      if(!Array.isArray(s.holidays)) s.holidays = DEFAULT_HOLIDAYS_2026.slice();
+      if(!s.monthCredits) s.monthCredits = {};
+      if(!s.usage) s.usage = {};
+      if(typeof s.year!=='number'||typeof s.month!=='number'){ const d=defaultState(); s.year=d.year; s.month=d.month; }
+      return s;
+    }
+  }catch(e){}
+  return defaultState();
+}
+let state = load();
+function save(){ try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch(e){} }
+
+/* ---------- helpers ---------- */
+const pad = n => String(n).padStart(2,'0');
+const ymKey = (y,m) => `${y}-${pad(m+1)}`;
+const dKey  = (y,m,d) => `${y}-${pad(m+1)}-${pad(d)}`;
+const dow   = (y,m,d) => new Date(y,m,d).getDay();           // 0=dom .. 6=sáb
+const isWeekend = (y,m,d) => { const x=dow(y,m,d); return x===0||x===6; };
+
+function fmt(value, decimals){
+  if(!isFinite(value)) return '—';
+  const fixed = Math.abs(value).toFixed(decimals);
+  let [int,dec] = fixed.split('.');
+  int = int.replace(/\B(?=(\d{3})+(?!\d))/g,' ');       // thin-space thousands
+  const sign = value<0 ? '-' : '';
+  return sign + (dec ? int+'.'+dec : int);
+}
+const monthCredits = () => {
+  const v = state.monthCredits[ymKey(state.year,state.month)];
+  return (typeof v==='number' && v>=0) ? v : DEFAULT_CREDITS;
+};
+
+/* ---------- core computation for the active month ---------- */
+function computeMonth(){
+  const y=state.year, m=state.month;
+  const holiSet = new Set(state.holidays.map(h=>h.date));
+  const daysInMonth = new Date(y,m+1,0).getDate();
+  const credits = monthCredits();
+
+  let totalWork=0, weekdays=0;
+  for(let d=1; d<=daysInMonth; d++){
+    if(!isWeekend(y,m,d)){ weekdays++; if(!holiSet.has(dKey(y,m,d))) totalWork++; }
+  }
+  const daily    = totalWork? credits/totalWork : 0;
+  const dailyPct = totalWork? 100/totalWork : 0;
+
+  // per-day running cumulative + usage roll-up
+  const now = new Date();
+  const isThisMonth = (now.getFullYear()===y && now.getMonth()===m);
+  const todayD = now.getDate();
+
+  let workSoFar=0, usedTotal=0, usedToDate=0, capToDate=0, workToToday=0;
+  const days=[];
+  for(let d=1; d<=daysInMonth; d++){
+    const weekend = isWeekend(y,m,d);
+    const holiday = !weekend && holiSet.has(dKey(y,m,d));
+    const working = !weekend && !holiday;
+    if(working) workSoFar++;
+    const cumPct  = working ? workSoFar/totalWork*100 : null;
+    const cumCred = working ? workSoFar/totalWork*credits : null;
+
+    const used = state.usage[dKey(y,m,d)];
+    const usedNum = (typeof used==='number') ? used : null;
+    if(usedNum!==null) usedTotal += usedNum;
+
+    const isPast = !isThisMonth ? true : (d<=todayD);
+    if(working && isPast){ if(usedNum!==null) usedToDate += usedNum; }
+    if(working && isThisMonth && d<=todayD){ workToToday = workSoFar; capToDate = cumCred; }
+    if(working && !isThisMonth){ capToDate = cumCred; workToToday = workSoFar; } // full month if not current
+
+    days.push({ d, weekend, holiday, working, cumPct, cumCred, used:usedNum,
+                holiName: holiday ? (state.holidays.find(h=>h.date===dKey(y,m,d))||{}).name : null });
+  }
+
+  return { y,m,daysInMonth,credits,totalWork,weekdays,holidaysOnWeekday:weekdays-totalWork,
+           daily,dailyPct,days,isThisMonth,todayD,
+           usedTotal,usedToDate,capToDate,workToToday,
+           todayPct: totalWork? workToToday/totalWork*100 : 0 };
+}
+
+/* ---------- render ---------- */
+function render(){
+  const M = computeMonth();
+
+  // header bits
+  document.getElementById('mname').textContent = MONTHS[M.m];
+  document.getElementById('myear').textContent = M.y;
+  const ci = document.getElementById('credits');
+  if(document.activeElement!==ci) ci.value = M.credits;
+
+  // flag (today snapshot)
+  const flag = document.getElementById('flag');
+  if(M.isThisMonth){
+    const now=new Date();
+    flag.innerHTML = `Hoy · ${pad(now.getDate())}/${pad(M.m+1)}/${M.y}<br>tope acumulado <b>${fmt(M.todayPct,2)}%</b> · <b>${fmt(M.capToDate,1)}</b> cr`;
+  }else{
+    flag.innerHTML = `Mes completo<br><b>${fmt(M.credits,1)}</b> cr en <b>${M.totalWork}</b> días hábiles`;
+  }
+
+  renderStats(M);
+  renderGrid(M);
+  renderHolidays();
+  save();
+}
+
+function renderStats(M){
+  const el = document.getElementById('stats');
+  const todayLabel = M.isThisMonth ? `Hoy · día ${M.workToToday} de ${M.totalWork}` : 'Tope fin de mes';
+  const overUnder = (()=>{
+    if(M.usedToDate<=0) return '';
+    const diff = M.usedToDate - M.capToDate;
+    const cls = diff>0 ? 'over' : 'ok';
+    const txt = diff>0 ? `+${fmt(diff,1)} sobre el ritmo` : `${fmt(Math.abs(diff),1)} de margen`;
+    return `<div class="pace ${cls}"><span class="dot"></span>${txt}</div>`;
+  })();
+  const remaining = M.credits - M.usedTotal;
+
+  el.innerHTML = `
+    <div class="card">
+      <div class="k">Días hábiles</div>
+      <div class="v">${M.totalWork}</div>
+      <div class="sub">${M.weekdays} L–V · <span class="hot">−${M.holidaysOnWeekday}</span> feriado${M.holidaysOnWeekday===1?'':'s'}</div>
+    </div>
+    <div class="card">
+      <div class="k">Cupo diario</div>
+      <div class="v">${fmt(M.daily,1)} <small>cr</small></div>
+      <div class="sub"><span class="hot">${fmt(M.dailyPct,2)}%</span> por día hábil</div>
+    </div>
+    <div class="card green">
+      <div class="k">${todayLabel}</div>
+      <div class="v">${fmt(M.todayPct,2)}<small>%</small></div>
+      <div class="sub">tope <span class="hot">${fmt(M.capToDate,1)}</span> cr acumulados</div>
+    </div>
+    <div class="card ${M.usedTotal>0 && (M.usedToDate-M.capToDate)>0?'rose':'green'}">
+      <div class="k">Uso registrado</div>
+      <div class="v">${fmt(M.usedTotal,1)} <small>cr</small></div>
+      <div class="sub">restan <span class="hot">${fmt(remaining,1)}</span> cr</div>
+      ${overUnder}
+    </div>`;
+}
+
+function renderGrid(M){
+  const grid = document.getElementById('grid');
+  grid.innerHTML='';
+  const firstDow = dow(M.y,M.m,1);            // 0=dom..6=sáb
+  const offset = (firstDow+6)%7;              // Monday-first
+  for(let i=0;i<offset;i++){
+    const b=document.createElement('div'); b.className='cell blank'; grid.appendChild(b);
+  }
+  M.days.forEach(day=>{
+    const cell=document.createElement('div');
+    const isToday = M.isThisMonth && day.d===M.todayD;
+    let cls='cell';
+    if(day.working) cls+=' work';
+    else if(day.holiday) cls+=' holiday';
+    else cls+=' weekend';
+    if(isToday) cls+=' today';
+
+    // over/under colouring for used days
+    if(day.working && day.used!==null && day.cumCred!==null){
+      if(day.used > M.daily + 1e-9) cls+=' over';
+      else cls+=' under';
+    }
+    cell.className=cls;
+
+    const dl = DOW_SHORT[dow(M.y,M.m,day.d)];
+    let inner = `<div class="dnum"><span>${day.d}</span><span class="dl">${dl}</span></div>`;
+    if(isToday) inner += `<div class="todaypin">HOY</div>`;
+
+    if(day.working){
+      inner += `<div class="big">${fmt(day.cumPct,2)}%</div>`;
+      inner += `<div class="cred">${fmt(day.cumCred,1)} cr acum.</div>`;
+      inner += `<div class="bar"><i style="width:${Math.min(100,day.cumPct).toFixed(2)}%"></i></div>`;
+      inner += `<div class="inc">+${fmt(M.dailyPct,2)}% · +${fmt(M.daily,1)} cr</div>`;
+      inner += `<div class="usebox"><input type="number" min="0" step="1" inputmode="numeric"
+                  data-date="${dKey(M.y,M.m,day.d)}" placeholder="uso real"
+                  value="${day.used!==null?day.used:''}" /></div>`;
+    } else if(day.holiday){
+      inner += `<div class="tag">Feriado<br>${day.holiName||''}</div>`;
+    } else {
+      inner += `<div class="tag">Fin de semana</div>`;
+    }
+    cell.innerHTML=inner;
+    grid.appendChild(cell);
+  });
+
+  grid.querySelectorAll('input[data-date]').forEach(inp=>{
+    inp.addEventListener('change', e=>{
+      const k=e.target.getAttribute('data-date');
+      const v=e.target.value.trim();
+      if(v==='') delete state.usage[k];
+      else state.usage[k]=Math.max(0,parseFloat(v)||0);
+      render();
+    });
+  });
+}
+
+function renderHolidays(){
+  const list=document.getElementById('holiList');
+  const sorted=[...state.holidays].sort((a,b)=>a.date.localeCompare(b.date));
+  list.innerHTML = sorted.map(h=>{
+    const [yy,mm,dd]=h.date.split('-').map(Number);
+    const wd=new Date(yy,mm-1,dd).getDay();
+    const weekendish=(wd===0||wd===6);
+    const wlabel=['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'][wd];
+    return `<div class="holi-row ${weekendish?'weekendish':''}">
+      <span class="hd">${dd}/${pad(mm)}/${yy}</span>
+      <span>${h.name}</span>
+      <span class="hw">${wlabel}${weekendish?' · no resta':''}</span>
+      <button data-del="${h.date}">quitar</button>
+    </div>`;
+  }).join('');
+  list.querySelectorAll('button[data-del]').forEach(b=>{
+    b.addEventListener('click',()=>{
+      const d=b.getAttribute('data-del');
+      state.holidays=state.holidays.filter(h=>h.date!==d);
+      render();
+    });
+  });
+}
+
+/* ---------- events ---------- */
+document.getElementById('prev').addEventListener('click',()=>{
+  if(state.month===0){state.month=11;state.year--;}else state.month--;
+  render();
+});
+document.getElementById('next').addEventListener('click',()=>{
+  if(state.month===11){state.month=0;state.year++;}else state.month++;
+  render();
+});
+document.getElementById('credits').addEventListener('input',e=>{
+  const v=e.target.value.trim();
+  const key=ymKey(state.year,state.month);
+  if(v==='') delete state.monthCredits[key];
+  else state.monthCredits[key]=Math.max(0,parseFloat(v)||0);
+  render();
+});
+document.getElementById('hAdd').addEventListener('click',()=>{
+  const date=document.getElementById('hDate').value;
+  const name=document.getElementById('hName').value.trim()||'Feriado';
+  if(!date) return;
+  if(!state.holidays.some(h=>h.date===date)) state.holidays.push({date,name});
+  document.getElementById('hDate').value='';
+  document.getElementById('hName').value='';
+  render();
+});
+document.getElementById('hReset').addEventListener('click',()=>{
+  state.holidays=DEFAULT_HOLIDAYS_2026.slice();
+  render();
+});
+
+render();
+</script>
+</body>
+</html>
