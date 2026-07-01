@@ -27,6 +27,8 @@
     --rose:#d97a6e;
     --rose-deep:#5a2f2c;
     --weekend:#6b6478;
+    --vac:#84c9b4;
+    --vac-deep:#2f5d54;
     --radius:16px;
     --shadow:0 24px 60px -28px rgba(0,0,0,.85);
     --mono:'IBM Plex Mono',ui-monospace,monospace;
@@ -151,6 +153,7 @@
   .lg-week{background:rgba(107,100,120,.18);border:1px solid var(--muted-2)}
   .lg-holi{background:rgba(217,122,110,.16);border:1px solid var(--rose-deep)}
   .lg-today{background:transparent;border:1.5px solid var(--gold)}
+  .lg-vac{background:rgba(132,201,180,.16);border:1px solid var(--vac-deep)}
 
   .cal-scroll{overflow-x:auto;margin:0 -4px;padding:0 4px}
   .cal{min-width:680px}
@@ -188,6 +191,17 @@
   .cell.today{box-shadow:0 0 0 1.5px var(--gold),0 0 0 5px rgba(233,177,90,.12)}
   .cell .todaypin{position:absolute;top:-8px;right:10px;font-family:var(--mono);font-size:9px;letter-spacing:.14em;
     background:var(--gold);color:#1a140a;padding:2px 7px;border-radius:6px;font-weight:600}
+
+  /* vacaciones */
+  .cell.vacation{background:linear-gradient(165deg,rgba(132,201,180,.14),rgba(132,201,180,.02));border-color:rgba(47,93,84,.85)}
+  .cell.vacation .dnum{color:var(--vac)}
+  .cell.vacation .tag{color:var(--vac)}
+  .dnum .dr{display:flex;align-items:center;gap:5px}
+  .vacbtn{background:none;border:none;cursor:pointer;font-size:12px;line-height:1;opacity:.3;padding:0;transition:.15s}
+  .vacbtn:hover{opacity:1;transform:scale(1.2)}
+  .cell.vacation .vacbtn{opacity:.95}
+  .vac-lbl{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+  .holi-row.vac .hd{color:var(--vac)}
 
   /* usage input on working days */
   .usebox{margin-top:7px;display:flex;align-items:center;gap:5px}
@@ -276,6 +290,7 @@
       <span><i class="lg-work"></i> Día hábil</span>
       <span><i class="lg-week"></i> Fin de semana</span>
       <span><i class="lg-holi"></i> Feriado</span>
+      <span><i class="lg-vac"></i> Vacaciones</span>
       <span><i class="lg-today"></i> Hoy</span>
     </div>
   </div>
@@ -302,6 +317,26 @@
         <input type="text" class="name" id="hName" placeholder="Nombre del feriado" />
         <button class="btn" id="hAdd">Agregar</button>
         <button class="btn ghost" id="hReset">Restaurar Chile 2026</button>
+      </div>
+    </div>
+  </details>
+
+  <details class="holidays" id="vacPanel">
+    <summary><span id="vacTitle">Vacaciones</span> <span class="chev">▸</span></summary>
+    <div class="holi-body">
+      <p class="holi-note">
+        Marca tus días libres: los que caen en día hábil (L–V) se descuentan del cupo —igual que un feriado—
+        y suben tu cupo diario. Agrega un rango <b>Desde–Hasta</b> para varios días de una, o haz clic en el
+        ícono 🌴 sobre cualquier día del calendario. Puedes ponerlas en cualquier mes; los fines de semana se ignoran.
+      </p>
+      <div class="holi-list" id="vacList"></div>
+      <div class="holi-add">
+        <span class="vac-lbl">Desde</span>
+        <input type="date" id="vacFrom" />
+        <span class="vac-lbl">Hasta</span>
+        <input type="date" id="vacTo" />
+        <button class="btn" id="vacAdd">Agregar días</button>
+        <button class="btn ghost" id="vacClear">Borrar todas</button>
       </div>
     </div>
   </details>
@@ -343,7 +378,7 @@ const DOW_SHORT = ['dom','lun','mar','mié','jue','vie','sáb'];
 /* ---------- state ---------- */
 function defaultState(){
   const t = new Date();
-  return { year:t.getFullYear(), month:t.getMonth(), monthCredits:{}, usage:{}, holidays:DEFAULT_HOLIDAYS_2026.slice() };
+  return { year:t.getFullYear(), month:t.getMonth(), monthCredits:{}, usage:{}, holidays:DEFAULT_HOLIDAYS_2026.slice(), vacations:[] };
 }
 function load(){
   try{
@@ -351,6 +386,7 @@ function load(){
     if(raw){
       const s = JSON.parse(raw);
       if(!Array.isArray(s.holidays)) s.holidays = DEFAULT_HOLIDAYS_2026.slice();
+      if(!Array.isArray(s.vacations)) s.vacations = [];
       if(!s.monthCredits) s.monthCredits = {};
       if(!s.usage) s.usage = {};
       if(typeof s.year!=='number'||typeof s.month!=='number'){ const d=defaultState(); s.year=d.year; s.month=d.month; }
@@ -368,6 +404,9 @@ const ymKey = (y,m) => `${y}-${pad(m+1)}`;
 const dKey  = (y,m,d) => `${y}-${pad(m+1)}-${pad(d)}`;
 const dow   = (y,m,d) => new Date(y,m,d).getDay();           // 0=dom .. 6=sáb
 const isWeekend = (y,m,d) => { const x=dow(y,m,d); return x===0||x===6; };
+const parseKey = s => { const [y,m,d]=s.split('-').map(Number); return new Date(y,m-1,d); };
+const keyOf = dt => dKey(dt.getFullYear(), dt.getMonth(), dt.getDate());
+const MONTH_ABBR = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
 
 function fmt(value, decimals){
   if(!isFinite(value)) return '—';
@@ -382,16 +421,54 @@ const monthCredits = () => {
   return (typeof v==='number' && v>=0) ? v : DEFAULT_CREDITS;
 };
 
+/* ---------- vacaciones ---------- */
+function addVacations(fromStr, toStr){
+  if(!fromStr) return;
+  let a = fromStr, b = toStr || fromStr;
+  if(b < a){ const t=a; a=b; b=t; }
+  const set = new Set(state.vacations);
+  let cur = parseKey(a); const end = parseKey(b); let guard=0;
+  while(cur<=end && guard++<3000){
+    const wd = cur.getDay();
+    if(wd>=1 && wd<=5) set.add(keyOf(cur));   // solo L–V
+    cur.setDate(cur.getDate()+1);
+  }
+  state.vacations = [...set].sort();
+}
+function groupVacations(){
+  const sorted = [...state.vacations].sort();
+  const groups = [];
+  for(const d of sorted){
+    const last = groups[groups.length-1];
+    if(last){
+      const n = parseKey(last.end); n.setDate(n.getDate()+1);
+      const consecutive = keyOf(n)===d;
+      const bridge = parseKey(last.end).getDay()===5 && (parseKey(d)-parseKey(last.end))/86400000===3; // vie→lun
+      if(consecutive || bridge){ last.end=d; last.count++; continue; }
+    }
+    groups.push({ start:d, end:d, count:1 });
+  }
+  return groups;
+}
+const niceDate = key => { const dt=parseKey(key); return `${dt.getDate()} ${MONTH_ABBR[dt.getMonth()]} ${dt.getFullYear()}`; };
+
 /* ---------- core computation for the active month ---------- */
 function computeMonth(){
   const y=state.year, m=state.month;
   const holiSet = new Set(state.holidays.map(h=>h.date));
+  const vacSet  = new Set(state.vacations);
   const daysInMonth = new Date(y,m+1,0).getDate();
   const credits = monthCredits();
 
-  let totalWork=0, weekdays=0;
+  let totalWork=0, weekdays=0, holiWd=0, vacWd=0;
   for(let d=1; d<=daysInMonth; d++){
-    if(!isWeekend(y,m,d)){ weekdays++; if(!holiSet.has(dKey(y,m,d))) totalWork++; }
+    if(!isWeekend(y,m,d)){
+      weekdays++;
+      const k=dKey(y,m,d);
+      if(holiSet.has(k)) holiWd++;
+      else if(vacSet.has(k)) vacWd++;
+      else totalWork++;
+    }
   }
   const daily    = totalWork? credits/totalWork : 0;
   const dailyPct = totalWork? 100/totalWork : 0;
@@ -404,14 +481,16 @@ function computeMonth(){
   let workSoFar=0, usedTotal=0, usedToDate=0, capToDate=0, workToToday=0;
   const days=[];
   for(let d=1; d<=daysInMonth; d++){
-    const weekend = isWeekend(y,m,d);
-    const holiday = !weekend && holiSet.has(dKey(y,m,d));
-    const working = !weekend && !holiday;
+    const k = dKey(y,m,d);
+    const weekend  = isWeekend(y,m,d);
+    const holiday  = !weekend && holiSet.has(k);
+    const vacation = !weekend && !holiday && vacSet.has(k);
+    const working  = !weekend && !holiday && !vacation;
     if(working) workSoFar++;
     const cumPct  = working ? workSoFar/totalWork*100 : null;
     const cumCred = working ? workSoFar/totalWork*credits : null;
 
-    const used = state.usage[dKey(y,m,d)];
+    const used = state.usage[k];
     const usedNum = (typeof used==='number') ? used : null;
     if(usedNum!==null) usedTotal += usedNum;
 
@@ -420,11 +499,12 @@ function computeMonth(){
     if(working && isThisMonth && d<=todayD){ workToToday = workSoFar; capToDate = cumCred; }
     if(working && !isThisMonth){ capToDate = cumCred; workToToday = workSoFar; } // full month if not current
 
-    days.push({ d, weekend, holiday, working, cumPct, cumCred, used:usedNum,
-                holiName: holiday ? (state.holidays.find(h=>h.date===dKey(y,m,d))||{}).name : null });
+    days.push({ d, weekend, holiday, vacation, working, cumPct, cumCred, used:usedNum,
+                holiName: holiday ? (state.holidays.find(h=>h.date===k)||{}).name : null });
   }
 
-  return { y,m,daysInMonth,credits,totalWork,weekdays,holidaysOnWeekday:weekdays-totalWork,
+  return { y,m,daysInMonth,credits,totalWork,weekdays,
+           holidaysOnWeekday:holiWd, vacationsOnWeekday:vacWd,
            daily,dailyPct,days,isThisMonth,todayD,
            usedTotal,usedToDate,capToDate,workToToday,
            todayPct: totalWork? workToToday/totalWork*100 : 0 };
@@ -452,6 +532,7 @@ function render(){
   renderStats(M);
   renderGrid(M);
   renderHolidays();
+  renderVacations();
   save();
 }
 
@@ -471,7 +552,7 @@ function renderStats(M){
     <div class="card">
       <div class="k">Días hábiles</div>
       <div class="v">${M.totalWork}</div>
-      <div class="sub">${M.weekdays} L–V · <span class="hot">−${M.holidaysOnWeekday}</span> feriado${M.holidaysOnWeekday===1?'':'s'}</div>
+      <div class="sub">${M.weekdays} L–V · <span class="hot">−${M.holidaysOnWeekday}</span> fer${M.vacationsOnWeekday?` · <span class="hot">−${M.vacationsOnWeekday}</span> vac`:''}</div>
     </div>
     <div class="card">
       <div class="k">Cupo diario</div>
@@ -502,9 +583,11 @@ function renderGrid(M){
   M.days.forEach(day=>{
     const cell=document.createElement('div');
     const isToday = M.isThisMonth && day.d===M.todayD;
+    const k = dKey(M.y,M.m,day.d);
     let cls='cell';
     if(day.working) cls+=' work';
     else if(day.holiday) cls+=' holiday';
+    else if(day.vacation) cls+=' vacation';
     else cls+=' weekend';
     if(isToday) cls+=' today';
 
@@ -516,7 +599,11 @@ function renderGrid(M){
     cell.className=cls;
 
     const dl = DOW_SHORT[dow(M.y,M.m,day.d)];
-    let inner = `<div class="dnum"><span>${day.d}</span><span class="dl">${dl}</span></div>`;
+    const canVac = day.working || day.vacation;
+    const vacBtn = canVac
+      ? `<button class="vacbtn" data-vac="${k}" title="${day.vacation?'Quitar vacaciones':'Marcar vacaciones'}">🌴</button>`
+      : '';
+    let inner = `<div class="dnum"><span>${day.d}</span><span class="dr">${vacBtn}<span class="dl">${dl}</span></span></div>`;
     if(isToday) inner += `<div class="todaypin">HOY</div>`;
 
     if(day.working){
@@ -525,10 +612,12 @@ function renderGrid(M){
       inner += `<div class="bar"><i style="width:${Math.min(100,day.cumPct).toFixed(2)}%"></i></div>`;
       inner += `<div class="inc">+${fmt(M.dailyPct,2)}% · +${fmt(M.daily,1)} cr</div>`;
       inner += `<div class="usebox"><input type="number" min="0" step="1" inputmode="numeric"
-                  data-date="${dKey(M.y,M.m,day.d)}" placeholder="uso real"
+                  data-date="${k}" placeholder="uso real"
                   value="${day.used!==null?day.used:''}" /></div>`;
     } else if(day.holiday){
       inner += `<div class="tag">Feriado<br>${day.holiName||''}</div>`;
+    } else if(day.vacation){
+      inner += `<div class="tag">Vacaciones</div>`;
     } else {
       inner += `<div class="tag">Fin de semana</div>`;
     }
@@ -542,6 +631,17 @@ function renderGrid(M){
       const v=e.target.value.trim();
       if(v==='') delete state.usage[k];
       else state.usage[k]=Math.max(0,parseFloat(v)||0);
+      render();
+    });
+  });
+
+  grid.querySelectorAll('.vacbtn').forEach(btn=>{
+    btn.addEventListener('click', e=>{
+      e.stopPropagation();
+      const k=btn.getAttribute('data-vac');
+      const set=new Set(state.vacations);
+      if(set.has(k)) set.delete(k); else set.add(k);
+      state.vacations=[...set].sort();
       render();
     });
   });
@@ -566,6 +666,36 @@ function renderHolidays(){
     b.addEventListener('click',()=>{
       const d=b.getAttribute('data-del');
       state.holidays=state.holidays.filter(h=>h.date!==d);
+      render();
+    });
+  });
+}
+
+function renderVacations(){
+  const list=document.getElementById('vacList');
+  const groups=groupVacations();
+  const total=state.vacations.length;
+  document.getElementById('vacTitle').textContent =
+    total ? `Vacaciones · ${total} día${total===1?'':'s'}` : 'Vacaciones';
+
+  if(!groups.length){
+    list.innerHTML=`<div class="holi-row" style="grid-template-columns:1fr;opacity:.6">
+      <span class="hw">Sin vacaciones marcadas. Agrega un rango o usa el 🌴 del calendario.</span></div>`;
+    return;
+  }
+  list.innerHTML=groups.map(g=>{
+    const label = g.start===g.end ? niceDate(g.start) : `${niceDate(g.start)} → ${niceDate(g.end)}`;
+    return `<div class="holi-row vac">
+      <span class="hd">${label}</span>
+      <span>${g.count} día${g.count===1?'':'s'} hábil${g.count===1?'':'es'}</span>
+      <span class="hw">🌴</span>
+      <button data-vstart="${g.start}" data-vend="${g.end}">quitar</button>
+    </div>`;
+  }).join('');
+  list.querySelectorAll('button[data-vstart]').forEach(b=>{
+    b.addEventListener('click',()=>{
+      const s=b.getAttribute('data-vstart'), e=b.getAttribute('data-vend');
+      state.vacations=state.vacations.filter(v=> v<s || v>e);
       render();
     });
   });
@@ -598,6 +728,20 @@ document.getElementById('hAdd').addEventListener('click',()=>{
 });
 document.getElementById('hReset').addEventListener('click',()=>{
   state.holidays=DEFAULT_HOLIDAYS_2026.slice();
+  render();
+});
+document.getElementById('vacAdd').addEventListener('click',()=>{
+  const from=document.getElementById('vacFrom').value;
+  const to=document.getElementById('vacTo').value;
+  if(!from) return;
+  addVacations(from, to);
+  document.getElementById('vacFrom').value='';
+  document.getElementById('vacTo').value='';
+  render();
+});
+document.getElementById('vacClear').addEventListener('click',()=>{
+  if(!state.vacations.length) return;
+  state.vacations=[];
   render();
 });
 
