@@ -23,7 +23,7 @@ VS Code, abras el repo que abras (o ninguno).
 **Si ya tienes el `.vsix`:**
 
 ```powershell
-code --install-extension ia-credits-0.1.0.vsix --force
+code --install-extension ia-credits-0.1.1.vsix --force
 ```
 
 o desde la UI: *Extensiones* (`Ctrl+Shift+X`) → menú **⋯** → **Instalar desde VSIX…**
@@ -32,8 +32,8 @@ o desde la UI: *Extensiones* (`Ctrl+Shift+X`) → menú **⋯** → **Instalar d
 
 ```powershell
 cd vscode-extension
-npx @vscode/vsce package --no-dependencies      # genera ia-credits-0.1.0.vsix
-code --install-extension ia-credits-0.1.0.vsix --force
+npx @vscode/vsce package --no-dependencies      # genera ia-credits-0.1.1.vsix
+code --install-extension ia-credits-0.1.1.vsix --force
 ```
 
 Luego **recarga VS Code** (`Ctrl+Shift+P` → *Developer: Reload Window*). Verás **IA Credits**

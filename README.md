@@ -31,7 +31,7 @@ Se **instala una vez** y corre en **cualquier ventana** de VS Code, abras el rep
 ```powershell
 cd vscode-extension
 npx @vscode/vsce package --no-dependencies          # genera el .vsix
-code --install-extension ia-credits-0.1.0.vsix --force
+code --install-extension ia-credits-0.1.1.vsix --force
 ```
 
 Recarga VS Code, conéctate con **IA Credits: Conectar con GitHub** (autorización de un clic; si
