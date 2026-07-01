@@ -3,3 +3,11 @@ node_modules/
 .DS_Store
 Thumbs.db
 *.log
+
+# Nunca versionar secretos ni credenciales
+.env
+.env.*
+*.pem
+*.key
+*.token
+secrets.json

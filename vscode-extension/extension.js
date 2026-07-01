@@ -27,7 +27,11 @@ const MONTH_ABBR = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep
 const niceDate = key => { const dt = parseKey(key); return `${dt.getDate()} ${MONTH_ABBR[dt.getMonth()]} ${dt.getFullYear()}`; };
 
 /* ───────────────────────── vacaciones ───────────────────────── */
-function getVacations() { return vscode.workspace.getConfiguration('iaCredits').get('vacations', []) || []; }
+function getVacations() {
+  const v = vscode.workspace.getConfiguration('iaCredits').get('vacations', []);
+  // Sanea: solo fechas YYYY-MM-DD válidas (evita valores raros en config manual).
+  return Array.isArray(v) ? v.filter(x => typeof x === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(x)) : [];
+}
 async function setVacations(arr) {
   await vscode.workspace.getConfiguration('iaCredits').update('vacations', arr, vscode.ConfigurationTarget.Global);
 }
@@ -183,32 +187,48 @@ function httpsGetJson(url, token) {
   });
 }
 
-// Lee el snapshot de cuota del endpoint interno de Copilot (el que alimenta
-// la barra de estado oficial). No documentado: parsing defensivo.
+// Lee el snapshot de cuota del endpoint interno de Copilot (el que alimenta la
+// barra de estado oficial). No documentado: parsing defensivo.
+// Elige el bloque que representa los "créditos" del usuario y deriva el consumo:
+//  - Pro / Pro+ / Business: bloque `premium_interactions` (p.ej. 1500 / 7000).
+//  - Free: `premium_interactions` viene en 0 / ausente y el cupo real ("Créditos",
+//    200) vive en `chat` (con token_based_billing). Por eso elegimos el primer
+//    bloque con cupo > 0, prefiriendo premium_interactions y luego chat.
 function parseQuota(json) {
   if (!json) return null;
   const qs = json.quota_snapshots || json.quotaSnapshots || null;
-  let snap = null;
-  if (qs && typeof qs === 'object') {
-    snap = qs.premium_interactions || qs.premiumInteractions || qs.premium || null;
-    if (!snap) {
-      for (const k of Object.keys(qs)) {
-        const v = qs[k];
-        if (v && typeof v === 'object' && !v.unlimited &&
-          (num(v.entitlement) !== null || num(v.remaining) !== null)) { snap = v; break; }
-      }
-    }
-  }
+  if (!qs || typeof qs !== 'object') return null;
+
+  const read = (key, snap) => {
+    if (!snap || typeof snap !== 'object') return null;
+    return {
+      key,
+      entitlement: num(snap.entitlement),
+      remaining: num(snap.remaining !== undefined ? snap.remaining : snap.quota_remaining),
+      pctRem: num(snap.percent_remaining !== undefined ? snap.percent_remaining : snap.percentRemaining),
+      unlimited: !!snap.unlimited
+    };
+  };
+
+  // Solo bloques con cupo real (> 0) y no ilimitados.
+  const candidates = Object.keys(qs)
+    .map(k => read(k, qs[k]))
+    .filter(s => s && !s.unlimited && s.entitlement !== null && s.entitlement > 0);
+
+  const snap =
+    candidates.find(s => s.key === 'premium_interactions') ||
+    candidates.find(s => s.key === 'chat') ||
+    candidates.slice().sort((a, b) => b.entitlement - a.entitlement)[0] ||
+    null;
   if (!snap) return null;
-  const entitlement = num(snap.entitlement);
-  const remaining = num(snap.remaining);
-  const pctRem = num(snap.percent_remaining !== undefined ? snap.percent_remaining : snap.percentRemaining);
-  let used = null, total = entitlement;
-  if (entitlement !== null && remaining !== null) used = Math.max(0, entitlement - remaining);
-  else if (entitlement !== null && pctRem !== null) used = entitlement * (1 - pctRem / 100);
+
+  let used = null;
+  if (snap.remaining !== null) used = Math.max(0, snap.entitlement - snap.remaining);
+  else if (snap.pctRem !== null) used = snap.entitlement * (1 - snap.pctRem / 100);
+
   return {
-    used, total, remaining,
-    unlimited: !!snap.unlimited,
+    used, total: snap.entitlement, remaining: snap.remaining,
+    unlimited: snap.unlimited, quotaId: snap.key,
     resetDate: json.quota_reset_date || json.quotaResetDate || null
   };
 }
@@ -228,7 +248,7 @@ async function fetchRestUsage(token, username, year, month) {
     login = u.json && u.json.login;
   }
   if (!login) return null;
-  const url = `https://api.github.com/users/${login}/settings/billing/usage?year=${year}&month=${month}`;
+  const url = `https://api.github.com/users/${encodeURIComponent(login)}/settings/billing/usage?year=${year}&month=${month}`;
   const r = await httpsGetJson(url, token);
   log('REST billing/usage -> ' + r.status);
   const items = (r.json && (r.json.usageItems || r.json.usage_items)) || [];
@@ -254,12 +274,16 @@ async function gatherUsage(secrets, year, month) {
   if (sess && sess.token) {
     try {
       const r = await httpsGetJson('https://api.github.com/copilot_internal/user', sess.token);
-      log('copilot_internal/user -> ' + r.status);
-      if (r.json) log('payload: ' + JSON.stringify(r.json).slice(0, 1200));
       const q = parseQuota(r.json);
-      if (q && q.used !== null) return Object.assign({ source: 'auto', login: sess.login }, q);
-      log('No se pudo parsear quota_snapshots; intento PAT/REST.');
-    } catch (e) { log('internal err ' + JSON.stringify(e).slice(0, 300)); }
+      const plan = r.json ? `${r.json.copilot_plan || '?'}/${r.json.access_type_sku || '?'}` : '?';
+      log(`copilot_internal/user -> HTTP ${r.status} · plan=${plan} · cuota=${q ? `${q.quotaId} ${q.used}/${q.total}` : 'no-parse'}`);
+      if (!q) log('  quota_snapshots: ' + JSON.stringify((r.json && (r.json.quota_snapshots || r.json.quotaSnapshots)) || null));
+      if (q && (q.used !== null || (q.total && q.total > 0)))
+        return Object.assign({ source: 'auto', login: sess.login, planSku: r.json && (r.json.access_type_sku || r.json.copilot_plan) }, q);
+      log('  Sin cupo utilizable en el snapshot; intento PAT/REST.');
+    } catch (e) { log('internal err ' + JSON.stringify(e).slice(0, 400)); }
+  } else {
+    log('Sin sesión de GitHub en VS Code. Ejecuta "IA Credits: Conectar con GitHub".');
   }
 
   // 2) Respaldo: PAT con permiso "Plan" -> REST billing documentada.
@@ -373,6 +397,19 @@ function openPanel(secrets) {
   else refresh(secrets);
 }
 
+// Traduce el SKU/plan del payload interno a un nombre legible.
+function planLabel(usage) {
+  const s = String((usage && usage.planSku) || '').toLowerCase();
+  if (!s) return null;
+  if (s.includes('free')) return 'Copilot Free';
+  if (s.includes('business')) return 'Copilot Business';
+  if (s.includes('enterprise')) return 'Copilot Enterprise';
+  if (s.includes('pro_plus') || s.includes('proplus') || s.includes('pro+')) return 'Copilot Pro+';
+  if (s.includes('pro')) return 'Copilot Pro';
+  if (s.includes('individual')) return 'Copilot Individual';
+  return null;
+}
+
 function getWebviewHtml(M, usage) {
   const pace = paceOf(M, usage);
   const hasReal = !!pace;
@@ -381,6 +418,9 @@ function getWebviewHtml(M, usage) {
 
   const vacs = getVacations();
   const vacGroups = groupVacations(vacs);
+
+  const autoCap = !!(usage && usage.total && usage.total > 0);   // ¿el cupo vino de la API?
+  const planName = planLabel(usage);
 
   // celdas del calendario
   const firstDow = new Date(M.year, M.month, 1).getDay();
@@ -420,9 +460,9 @@ function getWebviewHtml(M, usage) {
       ? `<div class="pill over">▲ ${fmt(pace.diff, 1)} cr sobre el ritmo</div>`
       : `<div class="pill ok">✓ ${fmt(-pace.diff, 1)} cr de margen</div>`;
     realCard = `<div class="card ${cl}">
-        <div class="k">Consumo real ${usage.source === 'auto' ? '· sesión VS Code' : '· PAT'}</div>
-        <div class="v">${fmt(usage.used, 1)} <small>cr</small></div>
-        <div class="sub">${pctUsed !== null ? fmt(pctUsed, 1) + '% de ' + fmt(total, 0) + ' cr' : ''}${usage.resetDate ? ' · reinicia ' + usage.resetDate : ''}</div>
+        <div class="k">IA Credits usados ${usage.source === 'auto' ? '· sesión VS Code' : '· PAT'}</div>
+        <div class="v">${fmt(usage.used, 1)} <small>/ ${fmt(total, 0)} cr</small></div>
+        <div class="sub">${pctUsed !== null ? fmt(pctUsed, 1) + '% usado' : ''}${usage.resetDate ? ' · reinicia ' + usage.resetDate : ''}</div>
         ${pill}
       </div>`;
   } else {
@@ -443,19 +483,21 @@ function getWebviewHtml(M, usage) {
   const todayLabel = M.isThisMonth ? `Tope a hoy (día ${M.workToToday}/${M.totalWork})` : 'Tope fin de mes';
 
   return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'unsafe-inline';">
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
 <style>
   :root{--gold:#e9b15a;--gold-soft:#f0c789;--gold-deep:#b07d2e;--green:#7fc6a0;--rose:#d97a6e;
     --line:#2c2833;--ink:#efe9e0;--muted:#9b93a6;--panel:#1a181f;--panel2:#211e27;--bg2:#141218;}
   *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:'IBM Plex Mono',ui-monospace,monospace;color:var(--ink);
+  body{font-family:ui-monospace,'Cascadia Code',ui-monospace,monospace;color:var(--ink);
     background:radial-gradient(900px 500px at 90% -10%,rgba(233,177,90,.10),transparent 55%),#0f0e12;
     padding:22px 24px 40px}
-  h1{font-family:'Fraunces',Georgia,serif;font-weight:600;font-size:30px;letter-spacing:-.01em}
+  h1{font-family:Georgia,'Times New Roman',serif;font-weight:600;font-size:30px;letter-spacing:-.01em}
   h1 em{font-style:italic;color:var(--gold-soft)}
-  .head{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:18px}
+  .head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:18px}
   .toolbar{display:flex;gap:8px}
+  .planchip{display:inline-block;margin-top:9px;font-size:11px;padding:4px 11px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+  .planchip.ok{color:var(--green);border-color:#2f5d46;background:rgba(127,198,160,.07)}
+  .planchip.warn{color:var(--gold-soft);border-color:var(--gold-deep);background:rgba(233,177,90,.07)}
   button{background:var(--gold);color:#1a140a;border:none;border-radius:8px;font-family:inherit;
     font-size:12px;font-weight:600;padding:8px 13px;cursor:pointer}
   button:hover{background:var(--gold-soft)}
@@ -468,15 +510,15 @@ function getWebviewHtml(M, usage) {
   .card.green::after{background:linear-gradient(90deg,var(--green),transparent)}
   .card.rose::after{background:linear-gradient(90deg,var(--rose),transparent)}
   .card .k{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
-  .card .v{font-family:'Fraunces',serif;font-size:30px;font-weight:600;margin-top:8px}
-  .card .v small{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--gold-soft)}
+  .card .v{font-family:Georgia,'Times New Roman',serif;font-size:30px;font-weight:600;margin-top:8px}
+  .card .v small{font-family:ui-monospace,'Cascadia Code',monospace;font-size:12px;color:var(--gold-soft)}
   .card .sub{font-size:11px;color:var(--ink);opacity:.85;margin-top:6px}
   .pill{display:inline-block;font-size:11px;margin-top:9px;padding:3px 9px;border-radius:999px;border:1px solid var(--line)}
   .pill.ok{color:var(--green);border-color:#2f5d46}
   .pill.over{color:var(--rose);border-color:#5a2f2c}
   .actions{display:flex;gap:7px;margin-top:10px}
   .actions button{padding:6px 10px;font-size:11px}
-  h2{font-family:'Fraunces',serif;font-size:19px;font-weight:600;margin-bottom:12px}
+  h2{font-family:Georgia,'Times New Roman',serif;font-size:19px;font-weight:600;margin-bottom:12px}
   .dow{display:grid;grid-template-columns:repeat(7,1fr);gap:7px;margin-bottom:6px}
   .dow div{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);padding-left:3px}
   .grid{display:grid;grid-template-columns:repeat(7,1fr);gap:7px}
@@ -485,7 +527,7 @@ function getWebviewHtml(M, usage) {
   .dnum{display:flex;justify-content:space-between;font-size:13px;font-weight:600;color:var(--ink);opacity:.85}
   .dnum .dl{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
   .cell.work{background:linear-gradient(165deg,rgba(233,177,90,.10),rgba(233,177,90,.02));border-color:rgba(176,125,46,.4)}
-  .cell.work .big{font-family:'Fraunces',serif;font-size:21px;font-weight:600;color:var(--gold-soft);margin-top:8px}
+  .cell.work .big{font-family:Georgia,'Times New Roman',serif;font-size:21px;font-weight:600;color:var(--gold-soft);margin-top:8px}
   .cell.work .cred{font-size:10px;color:var(--muted);margin-top:2px}
   .bar{height:3px;border-radius:3px;background:#2c2833;margin-top:6px;overflow:hidden}
   .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--gold-deep),var(--gold-soft))}
@@ -520,7 +562,10 @@ function getWebviewHtml(M, usage) {
   .note{margin-top:22px;font-size:11px;color:var(--muted);line-height:1.6}
 </style></head><body>
   <div class="head">
-    <h1>IA <em>Credits</em> · ${MONTHS[M.month]} ${M.year}</h1>
+    <div>
+      <h1>IA <em>Credits</em> · ${MONTHS[M.month]} ${M.year}</h1>
+      <div class="planchip ${autoCap ? 'ok' : 'warn'}">${planName ? escapeHtml(planName) + ' · ' : ''}${fmt(M.credits, 0)} cr/mes · ${autoCap ? 'detectado automáticamente ✓' : 'valor manual (Ajustes)'}</div>
+    </div>
     <div class="toolbar">
       <button onclick="send('refresh')">↻ Actualizar</button>
       <button class="ghost" onclick="send('settings')">⚙ Ajustes</button>

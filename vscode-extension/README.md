@@ -1,35 +1,55 @@
 # IA Credits — Copilot (Chile)
 
 Extensión de VS Code que reparte tu cupo mensual de **AI Credits de GitHub Copilot**
-solo entre **días hábiles (L–V)** descontando los **feriados de Chile**, y compara tu
-**consumo real** con el tope que *deberías* llevar a la fecha.
+solo entre **días hábiles (L–V)** descontando los **feriados de Chile** (y tus vacaciones),
+y compara tu **consumo real** con el tope que *deberías* llevar a la fecha.
 
 - **Barra de estado:** `🚀 IA 30.7% · meta hoy 90.5% ✓` — tu uso real vs. el ritmo recomendado.
-- **Panel:** calendario del mes con el % y créditos acumulados permitidos por día.
-- **Vacaciones:** marca días libres (rango o clic en 🌴 sobre un día); se descuentan del cupo como un feriado y suben tu cupo diario.
-- **Sin dependencias ni compilación.** JavaScript puro: se ejecuta con F5.
+- **Panel:** calendario del mes con el % y créditos acumulados permitidos por día, y un chip
+  que muestra tu **plan y cupo detectados automáticamente** (p. ej. `Copilot Free · 200 cr/mes`).
+- **Vacaciones:** marca días libres (rango o clic en 🌴 sobre un día); se descuentan del cupo
+  como un feriado y suben tu cupo diario.
+- **Externa a tus repos:** una vez instalada corre en **cualquier ventana** de VS Code y **no
+  escribe nada en tus proyectos** — su configuración vive en tus ajustes de usuario.
+- **Sin dependencias ni compilación** (JavaScript puro).
 
 ---
 
-## Cómo ejecutarla (modo desarrollo)
+## Instalación (uso normal)
 
-1. Abre **esta carpeta** (`vscode-extension`) en VS Code:
-   `Archivo → Abrir carpeta…`
-2. Presiona **F5** (o *Ejecutar → Iniciar depuración*).
-   Se abre una segunda ventana, **Extension Development Host**, con la extensión cargada.
-3. Mira la **barra de estado** abajo a la derecha. Haz clic para abrir el panel.
+Así se usa de verdad: se instala **una vez** y queda disponible en todas tus ventanas de
+VS Code, abras el repo que abras (o ninguno).
 
-> No necesitas `npm install`: la extensión no usa paquetes externos.
-
-### Instalarla de forma permanente (opcional)
+**Si ya tienes el `.vsix`:**
 
 ```powershell
-npm install -g @vscode/vsce
-cd "vscode-extension"
-vsce package        # genera ia-credits-0.1.0.vsix
+code --install-extension ia-credits-0.1.0.vsix --force
 ```
 
-Luego en VS Code: *Extensiones → ⋯ → Instalar desde VSIX…* y elige el `.vsix`.
+o desde la UI: *Extensiones* (`Ctrl+Shift+X`) → menú **⋯** → **Instalar desde VSIX…**
+
+**Si partes del código fuente**, primero empaquétalo:
+
+```powershell
+cd vscode-extension
+npx @vscode/vsce package --no-dependencies      # genera ia-credits-0.1.0.vsix
+code --install-extension ia-credits-0.1.0.vsix --force
+```
+
+Luego **recarga VS Code** (`Ctrl+Shift+P` → *Developer: Reload Window*). Verás **IA Credits**
+en la barra de estado.
+
+> No toca ningún repositorio: tus créditos, feriados y vacaciones se guardan en tus **ajustes
+> de usuario** de VS Code y el token en `SecretStorage`. Nada se escribe en tus workspaces.
+
+**Actualizar a una versión nueva:** vuelve a empaquetar e instala con `--force`.
+
+---
+
+## Primer uso
+
+1. `Ctrl+Shift+P` → **IA Credits: Conectar con GitHub** (elige la cuenta que tiene Copilot).
+2. Haz clic en **IA Credits** en la barra de estado para abrir el panel.
 
 ---
 
@@ -37,21 +57,24 @@ Luego en VS Code: *Extensiones → ⋯ → Instalar desde VSIX…* y elige el `.
 
 La extensión intenta dos caminos, en orden:
 
-1. **Automático (recomendado).** Reutiliza tu **sesión de GitHub de VS Code**
-   (`Conectar con GitHub`) y consulta el endpoint interno de Copilot
-   (`copilot_internal/user`), el mismo que alimenta la barra de estado oficial.
+1. **Automático (recomendado).** Reutiliza tu **sesión de GitHub de VS Code** y consulta el
+   endpoint interno de Copilot (`copilot_internal/user`), el mismo que alimenta el contador
+   oficial. De ahí toma el bloque de cuota que corresponde a tu plan y **detecta tu cupo solo**:
+   - **Free** → bloque `chat` (p. ej. 200 créditos).
+   - **Pro / Pro+ / Business / Enterprise** → bloque `premium_interactions` (1500 / 7000 / …).
+
    Entrega cupo, restante y fecha de reinicio — **sin que crees ningún token**.
-2. **Token PAT (respaldo).** Si el automático no está disponible, usa un
-   *fine-grained token* con permiso **`Plan: read`** (comando
-   *IA Credits: Configurar token*). Se guarda cifrado en `SecretStorage` y llama a
-   la API REST pública de facturación.
+2. **Token PAT (respaldo).** Si el automático no está disponible, usa un *fine-grained token*
+   con permiso **`Plan: read`** (*IA Credits: Configurar token*), cifrado en `SecretStorage`.
+   Solo aplica a planes personales (Pro/Pro+).
 
-Si ninguno está disponible, la extensión sigue siendo útil en **modo planificación**:
-muestra el tope diario y acumulado según tu calendario, sin el consumo real.
+Si ninguno está disponible, la extensión sigue siendo útil en **modo planificación**: muestra
+el tope diario y acumulado según tu calendario, sin el consumo real (el chip pasa a ámbar y
+usa `monthlyCredits` como respaldo).
 
-> ⚠️ El endpoint automático no está documentado por GitHub y podría cambiar.
-> Los datos se refrescan **por intervalos** (por defecto cada 5 min), no segundo a segundo.
-> Revisa el canal de salida **IA Credits** (`Ver → Salida`) si algo no cuadra.
+> ⚠️ El endpoint automático no está documentado por GitHub y podría cambiar. Los datos se
+> refrescan **por intervalos** (por defecto cada 5 min). Revisa **Ver → Salida → "IA Credits"**
+> si algo no cuadra: verás una línea tipo `… cuota=chat 0/200`.
 
 ---
 
@@ -59,7 +82,7 @@ muestra el tope diario y acumulado según tu calendario, sin el consumo real.
 
 | Ajuste | Por defecto | Para qué |
 |---|---|---|
-| `iaCredits.monthlyCredits` | `1500` | Cupo del plan (Pro 1500 · Pro+ 7000). Respaldo si la API no lo entrega. |
+| `iaCredits.monthlyCredits` | `1500` | **Respaldo** si la API no entrega tu cupo. Con lectura automática, la extensión detecta el real (Free 200, Pro 1500, Pro+ 7000, …) y este valor se ignora. |
 | `iaCredits.refreshIntervalSeconds` | `300` | Frecuencia de refresco del consumo real. |
 | `iaCredits.autoFetch` | `true` | Intentar leer el consumo real. |
 | `iaCredits.holidays` | feriados Chile 2026 | Lista editable (solo restan los que caen en día hábil). |
@@ -77,3 +100,16 @@ muestra el tope diario y acumulado según tu calendario, sin el consumo real.
 - **IA Credits: Borrar token guardado**
 - **IA Credits: Agregar vacaciones (rango)**
 - **IA Credits: Limpiar vacaciones**
+
+---
+
+## Desarrollo (solo para modificar la extensión)
+
+No hace falta para *usarla* — es únicamente para editar su código:
+
+1. Abre **esta carpeta** (`vscode-extension`) en VS Code.
+2. Presiona **F5** → se abre una ventana **Extension Development Host** con la extensión cargada
+   desde el código fuente (no requiere `npm install`).
+3. Tras cambiar el código, recarga esa ventana (`Ctrl+R`) o reinicia la depuración.
+
+Cuando esté listo, empaqueta el `.vsix` (ver *Instalación*) para usarla de forma permanente.

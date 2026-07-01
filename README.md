@@ -25,10 +25,20 @@ acumulado es **90,48 % · 36 190,5 cr**.
 
 ## Extensión de VS Code — uso rápido
 
-1. Abre la carpeta `vscode-extension` en VS Code y presiona **F5** (no requiere `npm install`).
-2. Conéctate con GitHub o configura un token para ver tu consumo real.
+Se **instala una vez** y corre en **cualquier ventana** de VS Code, abras el repo que abras
+(o ninguno). No escribe nada en tus proyectos: su configuración vive en tus ajustes de usuario.
 
-Detalles completos en [`vscode-extension/README.md`](vscode-extension/README.md).
+```powershell
+cd vscode-extension
+npx @vscode/vsce package --no-dependencies          # genera el .vsix
+code --install-extension ia-credits-0.1.0.vsix --force
+```
+
+Recarga VS Code, conéctate con **IA Credits: Conectar con GitHub** y abre el panel. Detecta tu
+**plan y cupo automáticamente** (Free 200, Pro 1500, Pro+ 7000, …).
+
+Detalles completos —incluido el modo desarrollo (F5)— en
+[`vscode-extension/README.md`](vscode-extension/README.md).
 
 ## Notas
 

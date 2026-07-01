@@ -2,9 +2,10 @@
   "name": "ia-credits",
   "displayName": "IA Credits — Copilot (Chile)",
   "description": "Reparte tu cupo mensual de AI Credits de GitHub Copilot solo entre días hábiles (L–V) descontando feriados de Chile, y compara tu consumo real con el tope que deberías llevar a la fecha.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "local",
   "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/AndresVegaP/copilot-tracker-pro.git" },
   "engines": {
     "vscode": "^1.85.0"
   },
