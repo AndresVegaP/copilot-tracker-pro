@@ -51,6 +51,21 @@ en la barra de estado.
 1. `Ctrl+Shift+P` → **IA Credits: Conectar con GitHub** (elige la cuenta que tiene Copilot).
 2. Haz clic en **IA Credits** en la barra de estado para abrir el panel.
 
+### ¿Tengo que iniciar sesión cada vez o pegar un token?
+
+**No.** La extensión usa la **API oficial de autenticación de VS Code** (`vscode.authentication`);
+no extrae tokens de ningún lado ni accede a credenciales de otras extensiones:
+
+- **La primera vez** debes **autorizarla una sola vez** con *IA Credits: Conectar con GitHub*.
+  VS Code muestra un diálogo pidiéndote permiso para que la extensión use tu cuenta de GitHub.
+  Si ya usas Copilot, **no es un login nuevo** (ya tienes sesión): solo concedes el permiso con un clic.
+- **A partir de ahí** lee tu consumo **automáticamente y en silencio** en cada sesión —
+  sin volver a pedirte nada y **sin que pegues ningún token**.
+- El **token PAT es solo un respaldo opcional** para casos donde el modo automático no aplica
+  (p. ej. una cuenta gestionada por empresa cuyo endpoint interno no entrega datos por usuario).
+
+Nada de esto ocurre sin tu consentimiento explícito: VS Code te pide permiso y tú decides.
+
 ---
 
 ## Lectura del consumo real

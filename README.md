@@ -34,8 +34,10 @@ npx @vscode/vsce package --no-dependencies          # genera el .vsix
 code --install-extension ia-credits-0.1.0.vsix --force
 ```
 
-Recarga VS Code, conéctate con **IA Credits: Conectar con GitHub** y abre el panel. Detecta tu
-**plan y cupo automáticamente** (Free 200, Pro 1500, Pro+ 7000, …).
+Recarga VS Code, conéctate con **IA Credits: Conectar con GitHub** (autorización de un clic; si
+ya usas Copilot no es un login nuevo, y **no hace falta pegar ningún token**) y abre el panel.
+Detecta tu **plan y cupo automáticamente** (Free 200, Pro 1500, Pro+ 7000, …); tras el permiso
+inicial, lee tu consumo solo en cada sesión.
 
 Detalles completos —incluido el modo desarrollo (F5)— en
 [`vscode-extension/README.md`](vscode-extension/README.md).
