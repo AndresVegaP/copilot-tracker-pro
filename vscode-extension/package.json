@@ -17,7 +17,9 @@
       { "command": "iaCredits.refresh", "title": "IA Credits: Actualizar ahora" },
       { "command": "iaCredits.connect", "title": "IA Credits: Conectar con GitHub (sesión de VS Code)" },
       { "command": "iaCredits.setToken", "title": "IA Credits: Configurar token de GitHub (PAT)" },
-      { "command": "iaCredits.clearToken", "title": "IA Credits: Borrar token guardado" }
+      { "command": "iaCredits.clearToken", "title": "IA Credits: Borrar token guardado" },
+      { "command": "iaCredits.addVacations", "title": "IA Credits: Agregar vacaciones (rango)" },
+      { "command": "iaCredits.clearVacations", "title": "IA Credits: Limpiar vacaciones" }
     ],
     "configuration": {
       "title": "IA Credits",
@@ -72,6 +74,12 @@
             { "date": "2026-12-08", "name": "Inmaculada Concepción" },
             { "date": "2026-12-25", "name": "Navidad" }
           ]
+        },
+        "iaCredits.vacations": {
+          "type": "array",
+          "markdownDescription": "Tus días de vacaciones (formato `YYYY-MM-DD`). Solo los que caen en día hábil (L–V) se descuentan del cupo, igual que un feriado. Edítalos desde el panel (🌴) o aquí.",
+          "items": { "type": "string" },
+          "default": []
         }
       }
     }

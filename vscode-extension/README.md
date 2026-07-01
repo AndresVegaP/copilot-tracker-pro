@@ -6,6 +6,7 @@ solo entre **días hábiles (L–V)** descontando los **feriados de Chile**, y c
 
 - **Barra de estado:** `🚀 IA 30.7% · meta hoy 90.5% ✓` — tu uso real vs. el ritmo recomendado.
 - **Panel:** calendario del mes con el % y créditos acumulados permitidos por día.
+- **Vacaciones:** marca días libres (rango o clic en 🌴 sobre un día); se descuentan del cupo como un feriado y suben tu cupo diario.
 - **Sin dependencias ni compilación.** JavaScript puro: se ejecuta con F5.
 
 ---
@@ -62,6 +63,7 @@ muestra el tope diario y acumulado según tu calendario, sin el consumo real.
 | `iaCredits.refreshIntervalSeconds` | `300` | Frecuencia de refresco del consumo real. |
 | `iaCredits.autoFetch` | `true` | Intentar leer el consumo real. |
 | `iaCredits.holidays` | feriados Chile 2026 | Lista editable (solo restan los que caen en día hábil). |
+| `iaCredits.vacations` | `[]` | Tus días libres (`YYYY-MM-DD`). Solo restan los que caen en día hábil. |
 | `iaCredits.githubUsername` | `""` | Opcional; se detecta solo con token/sesión. |
 
 ---
@@ -73,3 +75,5 @@ muestra el tope diario y acumulado según tu calendario, sin el consumo real.
 - **IA Credits: Conectar con GitHub (sesión de VS Code)**
 - **IA Credits: Configurar token de GitHub (PAT)**
 - **IA Credits: Borrar token guardado**
+- **IA Credits: Agregar vacaciones (rango)**
+- **IA Credits: Limpiar vacaciones**

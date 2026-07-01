@@ -21,6 +21,58 @@ let lastModel = null;   // último { M, usage } calculado
 const pad = n => String(n).padStart(2, '0');
 const dKey = (y, m, d) => `${y}-${pad(m + 1)}-${pad(d)}`;
 const isWeekend = (y, m, d) => { const x = new Date(y, m, d).getDay(); return x === 0 || x === 6; };
+const parseKey = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+const keyOf = dt => dKey(dt.getFullYear(), dt.getMonth(), dt.getDate());
+const MONTH_ABBR = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+const niceDate = key => { const dt = parseKey(key); return `${dt.getDate()} ${MONTH_ABBR[dt.getMonth()]} ${dt.getFullYear()}`; };
+
+/* ───────────────────────── vacaciones ───────────────────────── */
+function getVacations() { return vscode.workspace.getConfiguration('iaCredits').get('vacations', []) || []; }
+async function setVacations(arr) {
+  await vscode.workspace.getConfiguration('iaCredits').update('vacations', arr, vscode.ConfigurationTarget.Global);
+}
+function expandVacRange(fromStr, toStr, existing) {
+  const set = new Set(existing || []);
+  if (!fromStr) return [...set].sort();
+  let a = fromStr, b = toStr || fromStr;
+  if (b < a) { const t = a; a = b; b = t; }
+  let cur = parseKey(a); const end = parseKey(b); let guard = 0;
+  while (cur <= end && guard++ < 3000) {
+    const wd = cur.getDay();
+    if (wd >= 1 && wd <= 5) set.add(keyOf(cur));   // solo L–V
+    cur.setDate(cur.getDate() + 1);
+  }
+  return [...set].sort();
+}
+async function toggleVacation(dateKey) {
+  if (!dateKey) return;
+  const set = new Set(getVacations());
+  if (set.has(dateKey)) set.delete(dateKey); else set.add(dateKey);
+  await setVacations([...set].sort());
+}
+async function addVacationRange(from, to) {
+  if (!from) return;
+  await setVacations(expandVacRange(from, to, getVacations()));
+}
+async function removeVacationRange(start, end) {
+  if (!start) return;
+  await setVacations(getVacations().filter(v => v < start || v > end));
+}
+function groupVacations(vacations) {
+  const sorted = [...(vacations || [])].sort();
+  const groups = [];
+  for (const d of sorted) {
+    const last = groups[groups.length - 1];
+    if (last) {
+      const n = parseKey(last.end); n.setDate(n.getDate() + 1);
+      const consecutive = keyOf(n) === d;
+      const bridge = parseKey(last.end).getDay() === 5 && (parseKey(d) - parseKey(last.end)) / 86400000 === 3; // vie→lun
+      if (consecutive || bridge) { last.end = d; last.count++; continue; }
+    }
+    groups.push({ start: d, end: d, count: 1 });
+  }
+  return groups;
+}
 const num = v => {
   if (v === null || v === undefined || v === '') return null;
   const n = Number(v); return isFinite(n) ? n : null;
@@ -39,7 +91,8 @@ function cfg() {
     githubUsername: (c.get('githubUsername', '') || '').trim(),
     refreshIntervalSeconds: Math.max(30, c.get('refreshIntervalSeconds', 300)),
     autoFetch: c.get('autoFetch', true),
-    holidays: c.get('holidays', [])
+    holidays: c.get('holidays', []),
+    vacations: c.get('vacations', [])
   };
 }
 function log(msg) {
@@ -49,15 +102,22 @@ function log(msg) {
 }
 
 /* ─────────────────────── cálculo del mes ─────────────────────── */
-function computeMonth(year, month, credits, holidays) {
+function computeMonth(year, month, credits, holidays, vacations) {
   const holiSet = new Set((holidays || []).map(h => (typeof h === 'string' ? h : h.date)));
   const holiName = {};
   (holidays || []).forEach(h => { if (h && typeof h !== 'string') holiName[h.date] = h.name; });
+  const vacSet = new Set(vacations || []);
 
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  let totalWork = 0, weekdays = 0;
+  let totalWork = 0, weekdays = 0, holiWd = 0, vacWd = 0;
   for (let d = 1; d <= daysInMonth; d++) {
-    if (!isWeekend(year, month, d)) { weekdays++; if (!holiSet.has(dKey(year, month, d))) totalWork++; }
+    if (!isWeekend(year, month, d)) {
+      weekdays++;
+      const k = dKey(year, month, d);
+      if (holiSet.has(k)) holiWd++;
+      else if (vacSet.has(k)) vacWd++;
+      else totalWork++;
+    }
   }
   const daily = totalWork ? credits / totalWork : 0;
   const dailyPct = totalWork ? 100 / totalWork : 0;
@@ -69,24 +129,26 @@ function computeMonth(year, month, credits, holidays) {
   let work = 0, workToToday = 0;
   const days = [];
   for (let d = 1; d <= daysInMonth; d++) {
+    const k = dKey(year, month, d);
     const we = isWeekend(year, month, d);
-    const ho = !we && holiSet.has(dKey(year, month, d));
-    const wk = !we && !ho;
+    const ho = !we && holiSet.has(k);
+    const va = !we && !ho && vacSet.has(k);
+    const wk = !we && !ho && !va;
     if (wk) work++;
     if (wk && (!isThisMonth || d <= todayD)) workToToday = work;
     days.push({
-      d, weekend: we, holiday: ho, working: wk,
+      d, weekend: we, holiday: ho, vacation: va, working: wk,
       dow: new Date(year, month, d).getDay(),
       cumPct: wk ? work / totalWork * 100 : null,
       cumCred: wk ? work / totalWork * credits : null,
-      holiName: ho ? (holiName[dKey(year, month, d)] || 'Feriado') : null
+      holiName: ho ? (holiName[k] || 'Feriado') : null
     });
   }
   const todayPct = totalWork ? workToToday / totalWork * 100 : 0;
   const capToday = totalWork ? workToToday / totalWork * credits : 0;
   return {
     year, month, daysInMonth, credits, totalWork, weekdays,
-    holidaysOnWeekday: weekdays - totalWork, daily, dailyPct, days,
+    holidaysOnWeekday: holiWd, vacationsOnWeekday: vacWd, daily, dailyPct, days,
     isThisMonth, todayD, workToToday, todayPct, capToday
   };
 }
@@ -242,7 +304,7 @@ function renderStatusBar(M, usage) {
 
   const md = new vscode.MarkdownString('', true);
   md.appendMarkdown(`**IA Credits — ${MONTHS[M.month]} ${M.year}**\n\n`);
-  md.appendMarkdown(`- Días hábiles: **${M.totalWork}**  _(${M.weekdays} L–V − ${M.holidaysOnWeekday} feriado${M.holidaysOnWeekday === 1 ? '' : 's'})_\n`);
+  md.appendMarkdown(`- Días hábiles: **${M.totalWork}**  _(${M.weekdays} L–V − ${M.holidaysOnWeekday} feriado${M.holidaysOnWeekday === 1 ? '' : 's'}${M.vacationsOnWeekday ? ` − ${M.vacationsOnWeekday} vacaciones` : ''})_\n`);
   md.appendMarkdown(`- Cupo diario: **${fmt(M.daily, 1)}** cr · **${fmt(M.dailyPct, 2)}%**\n`);
   md.appendMarkdown(`- Tope ${M.isThisMonth ? 'a hoy' : 'del mes'}: **${fmt(M.todayPct, 2)}%** → **${fmt(M.capToday, 1)}** cr\n`);
   if (pace) {
@@ -262,14 +324,19 @@ function renderStatusBar(M, usage) {
 }
 
 /* ─────────────────────── ciclo de actualización ─────────────────────── */
-async function refresh(secrets) {
+async function refresh(secrets, opts) {
+  opts = opts || {};
   const c = cfg();
   const now = new Date();
-  const usage = await gatherUsage(secrets, now.getFullYear(), now.getMonth() + 1);
+  // Cambios que solo afectan el cálculo (feriados, vacaciones, plan) reusan el
+  // último consumo leído en vez de volver a golpear la API.
+  const usage = (opts.reuseUsage && lastModel)
+    ? lastModel.usage
+    : await gatherUsage(secrets, now.getFullYear(), now.getMonth() + 1);
 
   // Si la API entrega el cupo total, úsalo; si no, usa el configurado.
   const credits = (usage && usage.total && usage.total > 0) ? usage.total : c.monthlyCredits;
-  const M = computeMonth(now.getFullYear(), now.getMonth(), credits, c.holidays);
+  const M = computeMonth(now.getFullYear(), now.getMonth(), credits, c.holidays, c.vacations);
 
   lastModel = { M, usage };
   renderStatusBar(M, usage);
@@ -292,10 +359,15 @@ function openPanel(secrets) {
   );
   panel.onDidDispose(() => { panel = null; });
   panel.webview.onDidReceiveMessage(async msg => {
+    // Las operaciones de vacaciones actualizan la config -> el listener refresca solo.
     if (msg.cmd === 'refresh') await refresh(secrets);
     else if (msg.cmd === 'connect') vscode.commands.executeCommand('iaCredits.connect');
     else if (msg.cmd === 'token') vscode.commands.executeCommand('iaCredits.setToken');
     else if (msg.cmd === 'settings') vscode.commands.executeCommand('workbench.action.openSettings', 'iaCredits');
+    else if (msg.cmd === 'toggleVac') await toggleVacation(msg.data);
+    else if (msg.cmd === 'addVac') await addVacationRange(msg.data && msg.data.from, msg.data && msg.data.to);
+    else if (msg.cmd === 'delVac') await removeVacationRange(msg.data && msg.data.start, msg.data && msg.data.end);
+    else if (msg.cmd === 'clearVac') await setVacations([]);
   });
   if (lastModel) panel.webview.html = getWebviewHtml(lastModel.M, lastModel.usage);
   else refresh(secrets);
@@ -307,6 +379,9 @@ function getWebviewHtml(M, usage) {
   const total = hasReal ? ((usage.total && usage.total > 0) ? usage.total : M.credits) : null;
   const pctUsed = hasReal && total ? usage.used / total * 100 : null;
 
+  const vacs = getVacations();
+  const vacGroups = groupVacations(vacs);
+
   // celdas del calendario
   const firstDow = new Date(M.year, M.month, 1).getDay();
   const offset = (firstDow + 6) % 7;
@@ -314,8 +389,14 @@ function getWebviewHtml(M, usage) {
   for (let i = 0; i < offset; i++) cells += `<div class="cell blank"></div>`;
   for (const day of M.days) {
     const isToday = M.isThisMonth && day.d === M.todayD;
-    let cls = 'cell ' + (day.working ? 'work' : day.holiday ? 'holiday' : 'weekend') + (isToday ? ' today' : '');
-    let inner = `<div class="dnum"><span>${day.d}</span><span class="dl">${DOW_SHORT[day.dow]}</span></div>`;
+    const k = dKey(M.year, M.month, day.d);
+    const kind = day.working ? 'work' : day.holiday ? 'holiday' : day.vacation ? 'vacation' : 'weekend';
+    const cls = 'cell ' + kind + (isToday ? ' today' : '');
+    const canVac = day.working || day.vacation;
+    const vacBtn = canVac
+      ? `<button class="vacbtn" title="${day.vacation ? 'Quitar vacaciones' : 'Marcar vacaciones'}" onclick="toggleVac('${k}')">🌴</button>`
+      : '';
+    let inner = `<div class="dnum"><span>${day.d}</span><span class="dr">${vacBtn}<span class="dl">${DOW_SHORT[day.dow]}</span></span></div>`;
     if (isToday) inner += `<div class="pin">HOY</div>`;
     if (day.working) {
       inner += `<div class="big">${fmt(day.cumPct, 2)}%</div>`;
@@ -323,6 +404,8 @@ function getWebviewHtml(M, usage) {
       inner += `<div class="bar"><i style="width:${Math.min(100, day.cumPct).toFixed(2)}%"></i></div>`;
     } else if (day.holiday) {
       inner += `<div class="tag">Feriado<br>${escapeHtml(day.holiName)}</div>`;
+    } else if (day.vacation) {
+      inner += `<div class="tag">Vacaciones</div>`;
     } else {
       inner += `<div class="tag">Fin de semana</div>`;
     }
@@ -413,6 +496,27 @@ function getWebviewHtml(M, usage) {
   .cell.holiday .tag{color:var(--rose)}
   .cell.today{box-shadow:0 0 0 1.5px var(--gold),0 0 0 4px rgba(233,177,90,.12)}
   .pin{position:absolute;top:-7px;right:8px;font-size:8.5px;letter-spacing:.12em;background:var(--gold);color:#1a140a;padding:1px 6px;border-radius:5px;font-weight:600}
+  .cell.vacation{background:linear-gradient(165deg,rgba(132,201,180,.14),rgba(132,201,180,.02));border-color:#2f5d54}
+  .cell.vacation .dnum{color:#84c9b4}
+  .cell.vacation .tag{color:#84c9b4}
+  .dnum .dr{display:flex;align-items:center;gap:4px}
+  .vacbtn{background:none;border:none;cursor:pointer;font-size:12px;line-height:1;opacity:.3;padding:0;transition:.15s}
+  .vacbtn:hover{opacity:1;transform:scale(1.2);background:none}
+  .cell.vacation .vacbtn{opacity:.95}
+  .vacsec{margin-top:26px}
+  .vacsec h2{margin-bottom:8px}
+  .vacsec .note{margin-top:0;margin-bottom:12px}
+  .vaclist{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
+  .vacrow{display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;background:var(--bg2);border:1px solid #241f2b;border-radius:9px;padding:8px 12px;font-size:12px}
+  .vacrow .vd{color:#84c9b4}
+  .vacrow .vc{color:var(--muted);font-size:11px}
+  .vacrow button{background:none;border:none;color:var(--rose);font-size:11px;padding:4px 6px;cursor:pointer;font-weight:600}
+  .vacrow button:hover{background:rgba(217,122,110,.12);border-radius:6px}
+  .vacrow.empty{grid-template-columns:1fr;color:var(--muted);opacity:.7}
+  .vacadd{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .vacadd label{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+  .vacadd input[type=date]{background:var(--bg2);border:1px solid var(--line);border-radius:8px;color:var(--ink);font-family:inherit;font-size:12px;padding:7px 10px;color-scheme:dark}
+  .vacadd input[type=date]:focus{outline:none;border-color:var(--gold)}
   .note{margin-top:22px;font-size:11px;color:var(--muted);line-height:1.6}
 </style></head><body>
   <div class="head">
@@ -426,7 +530,7 @@ function getWebviewHtml(M, usage) {
     <div class="card">
       <div class="k">Días hábiles</div>
       <div class="v">${M.totalWork}</div>
-      <div class="sub">${M.weekdays} L–V · −${M.holidaysOnWeekday} feriado${M.holidaysOnWeekday === 1 ? '' : 's'}</div>
+      <div class="sub">${M.weekdays} L–V · −${M.holidaysOnWeekday} fer${M.vacationsOnWeekday ? ` · −${M.vacationsOnWeekday} vac` : ''}</div>
     </div>
     <div class="card">
       <div class="k">Cupo diario</div>
@@ -443,6 +547,24 @@ function getWebviewHtml(M, usage) {
   <h2>Calendario del cupo</h2>
   <div class="dow"><div>Lun</div><div>Mar</div><div>Mié</div><div>Jue</div><div>Vie</div><div>Sáb</div><div>Dom</div></div>
   <div class="grid">${cells}</div>
+
+  <div class="vacsec">
+    <h2>Vacaciones${vacs.length ? ` · ${vacs.length} día${vacs.length === 1 ? '' : 's'}` : ''}</h2>
+    <p class="note">Marca días libres: los que caen en día hábil (L–V) se descuentan del cupo, igual que un feriado, y suben tu cupo diario. Usa el 🌴 sobre un día del calendario o agrega un rango. Se guardan en tus ajustes de VS Code.</p>
+    <div class="vaclist">${vacGroups.length
+      ? vacGroups.map(g => {
+          const label = g.start === g.end ? niceDate(g.start) : `${niceDate(g.start)} → ${niceDate(g.end)}`;
+          return `<div class="vacrow"><span class="vd">${label}</span><span class="vc">${g.count} día${g.count === 1 ? '' : 's'} hábil${g.count === 1 ? '' : 'es'}</span><button onclick="delVac('${g.start}','${g.end}')">quitar</button></div>`;
+        }).join('')
+      : `<div class="vacrow empty">Sin vacaciones marcadas.</div>`}</div>
+    <div class="vacadd">
+      <label>Desde</label><input type="date" id="vacFrom">
+      <label>Hasta</label><input type="date" id="vacTo">
+      <button onclick="addVac()">Agregar días</button>
+      <button class="ghost" onclick="clearVac()">Borrar todas</button>
+    </div>
+  </div>
+
   <p class="note">
     El cupo se reparte solo entre días hábiles (L–V) descontando feriados de Chile.
     El consumo real proviene de tu cuenta de Copilot${hasReal ? (usage.source === 'auto' ? ' vía la sesión de GitHub de VS Code' : ' vía token PAT') : ''} y se actualiza por intervalos (no es tiempo real estricto).
@@ -451,6 +573,18 @@ function getWebviewHtml(M, usage) {
 <script>
   const vscode = acquireVsCodeApi();
   function send(cmd){ vscode.postMessage({cmd}); }
+  function toggleVac(d){ vscode.postMessage({cmd:'toggleVac', data:d}); }
+  function addVac(){
+    const from=document.getElementById('vacFrom').value;
+    const to=document.getElementById('vacTo').value;
+    if(!from) return;
+    vscode.postMessage({cmd:'addVac', data:{from:from, to:to}});
+  }
+  function delVac(s,e){ vscode.postMessage({cmd:'delVac', data:{start:s, end:e}}); }
+  function clearVac(){ vscode.postMessage({cmd:'clearVac'}); }
+  const prev = vscode.getState();
+  if(prev && prev.scrollY) window.scrollTo(0, prev.scrollY);
+  window.addEventListener('scroll', function(){ vscode.setState({scrollY: window.scrollY}); });
 </script>
 </body></html>`;
 }
@@ -496,11 +630,31 @@ function activate(context) {
       vscode.window.showInformationMessage('IA Credits: token borrado.');
       refresh(secrets);
     }),
+    vscode.commands.registerCommand('iaCredits.addVacations', async () => {
+      const rx = /^\d{4}-\d{2}-\d{2}$/;
+      const from = await vscode.window.showInputBox({
+        title: 'Vacaciones — inicio', prompt: 'Fecha de inicio (YYYY-MM-DD)',
+        placeHolder: '2026-07-13', ignoreFocusOut: true,
+        validateInput: v => rx.test(v) ? null : 'Usa el formato YYYY-MM-DD'
+      });
+      if (!from) return;
+      const to = await vscode.window.showInputBox({
+        title: 'Vacaciones — fin (opcional)', prompt: 'Fecha de fin (YYYY-MM-DD). Vacío = un solo día.',
+        placeHolder: '2026-07-24', ignoreFocusOut: true,
+        validateInput: v => (!v || rx.test(v)) ? null : 'Usa el formato YYYY-MM-DD'
+      });
+      await addVacationRange(from, to || '');
+      vscode.window.showInformationMessage('IA Credits: vacaciones agregadas.');
+    }),
+    vscode.commands.registerCommand('iaCredits.clearVacations', async () => {
+      await setVacations([]);
+      vscode.window.showInformationMessage('IA Credits: vacaciones limpiadas.');
+    }),
     vscode.workspace.onDidChangeConfiguration(e => {
-      if (e.affectsConfiguration('iaCredits')) {
-        scheduleRefresh(secrets);
-        refresh(secrets);
-      }
+      if (!e.affectsConfiguration('iaCredits')) return;
+      if (e.affectsConfiguration('iaCredits.refreshIntervalSeconds')) scheduleRefresh(secrets);
+      const needsFetch = e.affectsConfiguration('iaCredits.autoFetch') || e.affectsConfiguration('iaCredits.githubUsername');
+      refresh(secrets, { reuseUsage: !needsFetch }).catch(err => log('cfg refresh: ' + err));
     })
   );
 
